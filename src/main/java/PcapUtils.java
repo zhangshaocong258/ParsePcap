@@ -328,20 +328,20 @@ public class PcapUtils {
         for (int i = 0; i < fileList.size(); i++) {
 //			System.out.println(fileList.get(i).getAbsolutePath());
             RouteGen routeGen = new RouteGen(this, fileList.get(i).getAbsolutePath(), outPath, trafficRecords, comRecords);
-            results.add(exec.submit(routeGen));
-//			routeGen.call();
+//            results.add(exec.submit(routeGen));
+            routeGen.call();
         }
-        for (int i = 0; i < results.size(); i++) {
-            try {
-                results.get(i).get();
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            } catch (ExecutionException e) {
-                e.printStackTrace();
-            } finally {
-                exec.shutdown();
-            }
-        }
+//        for (int i = 0; i < results.size(); i++) {
+//            try {
+//                results.get(i).get();
+//            } catch (InterruptedException e) {
+//                e.printStackTrace();
+//            } catch (ExecutionException e) {
+//                e.printStackTrace();
+//            } finally {
+//                exec.shutdown();
+//            }
+//        }
     }
 
     private void parsePcap(String fpath, String outpath) throws FileNotFoundException {
