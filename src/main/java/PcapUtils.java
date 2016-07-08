@@ -1,4 +1,6 @@
 import java.io.*;
+import java.nio.MappedByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -213,37 +215,92 @@ class RouteGen implements Callable {
     public Boolean call() {
         try {
 
-            InputStreamReader in = new InputStreamReader(new FileInputStream(path), "UTF-8");
-            BufferedReader bin = new BufferedReader(in, 5 * 1024 * 1024);
-            String curLine = null;
-            int count = 0;
+//            InputStreamReader in = new InputStreamReader(new FileInputStream(path), "UTF-8");
+//            BufferedReader bin = new BufferedReader(in, 5 * 1024 * 1024);
+//            String curLine = null;
+//            int count = 0;
+//
+//            while ((curLine = bin.readLine()) != null) {
+//                count++;
+////				if(count%100000==0)
+////					System.out.println("readsrc "+count);
+////				System.out.println(curLine);
+//                if (curLine.length() < 2)
+//                    continue;
+//                String str[] = curLine.split(",");
+////				System.out.println(str.length);
+//                PcapData data = new PcapData();
+////				for(int i=0;i<str.length;i++)
+////					System.out.println(str[i]);
+//                data.setSrcIP(str[0]);
+//                data.setDstIP(str[1]);
+//                data.setSrcPort(Integer.parseInt(str[2]));
+//                data.setDstPort(Integer.parseInt(str[3]));
+//                data.setTime_s(Long.parseLong(str[4]));
+//                data.setTime_ms(Long.parseLong(str[5]));
+//                data.setTTL(Integer.parseInt(str[8]));
+//                data.setTraffic(Integer.valueOf(str[7]));
+//                data.setPcapFile(str[6]);
+//                //if(count<10)
+//                datas.add(data);
+//
+//            }
+//            bin.close();
 
-            while ((curLine = bin.readLine()) != null) {
-                count++;
-//				if(count%100000==0)
-//					System.out.println("readsrc "+count);
-//				System.out.println(curLine);
-                if (curLine.length() < 2)
-                    continue;
-                String str[] = curLine.split(",");
+            FileChannel fc = new FileInputStream(new File(path)).getChannel();
+            long length = fc.size();
+            MappedByteBuffer buffer = fc.map(FileChannel.MapMode.READ_ONLY, 0, fc.size());
+            System.out.println("length: " + length);
+
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < (int) length; i++) {
+                if (buffer.get(i) == 10) {//判断遇到换行符，处理此行数据
+                    String a = sb.toString().substring(0, sb.toString().length() - 1);
+//                    System.out.println(sb.toString());
+                    String str[] = a.split(",");
+//                    System.out.println("88 " + str[8]);
 //				System.out.println(str.length);
-                PcapData data = new PcapData();
+                    PcapData data = new PcapData();
+                    data.setSrcIP(str[0]);
+                    data.setDstIP(str[1]);
+                    data.setSrcPort(Integer.parseInt(str[2]));
+                    data.setDstPort(Integer.parseInt(str[3]));
+                    data.setTime_s(Long.parseLong(str[4]));
+                    data.setTime_ms(Long.parseLong(str[5]));
+                    data.setTTL(Integer.parseInt(str[8]));
+                    data.setTraffic(Integer.valueOf(str[7]));
+                    data.setPcapFile(str[6]);
+                    //if(count<10)
+                    datas.add(data);
+                    sb.delete(0, sb.length());
+                } else if (i == length - 1) {//判断到了最后一行，处理此行数据
+                    sb.append((char) buffer.get(i));
+//                    System.out.println(sb.toString());
+                    String str[] = sb.toString().split(",");
+//				System.out.println(str.length);
+                    PcapData data = new PcapData();
 //				for(int i=0;i<str.length;i++)
 //					System.out.println(str[i]);
-                data.setSrcIP(str[0]);
-                data.setDstIP(str[1]);
-                data.setSrcPort(Integer.parseInt(str[2]));
-                data.setDstPort(Integer.parseInt(str[3]));
-                data.setTime_s(Long.parseLong(str[4]));
-                data.setTime_ms(Long.parseLong(str[5]));
-                data.setTTL(Integer.parseInt(str[8]));
-                data.setTraffic(Integer.valueOf(str[7]));
-                data.setPcapFile(str[6]);
-                //if(count<10)
-                datas.add(data);
-
+                    data.setSrcIP(str[0]);
+                    data.setDstIP(str[1]);
+                    data.setSrcPort(Integer.parseInt(str[2]));
+                    data.setDstPort(Integer.parseInt(str[3]));
+                    data.setTime_s(Long.parseLong(str[4]));
+                    data.setTime_ms(Long.parseLong(str[5]));
+                    data.setTTL(Integer.parseInt(str[8]));
+                    data.setTraffic(Integer.valueOf(str[7]));
+                    data.setPcapFile(str[6]);
+                    //if(count<10)
+                    datas.add(data);
+                } else {//拼接成一行数据
+                    sb.append((char) buffer.get(i));
+                }
             }
-            bin.close();
+            sb = null;
+            fc.close();
+
+
+            //断点
             gen();
             datas = null;
             System.gc();
@@ -352,10 +409,10 @@ public class PcapUtils {
 
     public static void main(String[] args) throws FileNotFoundException {
         long a = System.currentTimeMillis();
-        String fpath = "E:\\pcap";
+        String fpath = "E:\\pcap3";
         PcapUtils pcapUtils = new PcapUtils();
         //pcapUtils.readInput(fpath,1);
-        pcapUtils.readInput(fpath, "E:\\out");
+        pcapUtils.readInput(fpath, "E:\\out3");
         long b = System.currentTimeMillis();
         System.out.println("时间：" + (b - a) / 1000);
         //pcapUtils.generateRoute("C:\\data\\out\\routesrc","C:\\data\\out");
@@ -370,25 +427,25 @@ public class PcapUtils {
         status = Status.GENROUTE;
         System.out.println(status);
         System.out.println("genSum " + genRouteSum);
-        ExecutorService exec = Executors.newFixedThreadPool(1);
+        ExecutorService exec = Executors.newFixedThreadPool(4);
         ArrayList<Future<Boolean>> results = new ArrayList<Future<Boolean>>();
         for (int i = 0; i < fileList.size(); i++) {
 //			System.out.println(fileList.get(i).getAbsolutePath());
             RouteGen routeGen = new RouteGen(this, fileList.get(i).getAbsolutePath(), outPath, trafficRecords, comRecords);
-//            results.add(exec.submit(routeGen));
-            routeGen.call();
+            results.add(exec.submit(routeGen));
+//            routeGen.call();
         }
-//        for (int i = 0; i < results.size(); i++) {
-//            try {
-//                results.get(i).get();
-//            } catch (InterruptedException e) {
-//                e.printStackTrace();
-//            } catch (ExecutionException e) {
-//                e.printStackTrace();
-//            } finally {
-//                exec.shutdown();
-//            }
-//        }
+        for (int i = 0; i < results.size(); i++) {
+            try {
+                results.get(i).get();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            } catch (ExecutionException e) {
+                e.printStackTrace();
+            } finally {
+                exec.shutdown();
+            }
+        }
     }
 
     private void parsePcap(String fpath, String outpath) throws FileNotFoundException {
