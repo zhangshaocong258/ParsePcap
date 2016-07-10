@@ -8,14 +8,18 @@ import java.util.*;
 import java.util.concurrent.*;
 
 class Parser implements Callable {
-    InputStream is = null;
+    FileChannel fc = null;
+    long length = 0;
+    MappedByteBuffer is = null;
+//    InputStream is = null;
     String file;
     ConcurrentHashMap<RecordKey, Integer> trafficRecords;
     private HashMap<String, BufferedWriter> bws;
     String path;
     PcapUtils pcapUtils;
 
-    Parser(PcapUtils pcapUtils, InputStream is, String file, ConcurrentHashMap<RecordKey, Integer> trafficRecords, HashMap<String, BufferedWriter> bws, String path) {
+    Parser(FileChannel fc, PcapUtils pcapUtils, MappedByteBuffer is, String file, ConcurrentHashMap<RecordKey, Integer> trafficRecords, HashMap<String, BufferedWriter> bws, String path) {
+        this.fc = fc;
         this.pcapUtils = pcapUtils;
         this.is = is;
         this.file = file;
@@ -26,10 +30,10 @@ class Parser implements Callable {
 
     public Boolean call() {
         try {
-            PcapParser.unpack(is, file, trafficRecords, bws, path);
+            PcapParser.unpack(fc, is, file, trafficRecords, bws, path);
             pcapUtils.setParsedNum(pcapUtils.getParsedNum() + 1);
             System.out.println("getParsedNum()" + pcapUtils.getParsedNum());
-            is.close();
+            fc.close();
         } catch (IOException e) {
             // TODO Auto-generated catch block
             e.printStackTrace();
@@ -407,12 +411,12 @@ public class PcapUtils {
         this.genTrafficSum = genTrafficSum;
     }
 
-    public static void main(String[] args) throws FileNotFoundException {
+    public static void main(String[] args) throws IOException, FileNotFoundException {
         long a = System.currentTimeMillis();
-        String fpath = "E:\\pcap3";
+        String fpath = "C:\\Users\\zsc\\Desktop\\pcap3";
         PcapUtils pcapUtils = new PcapUtils();
         //pcapUtils.readInput(fpath,1);
-        pcapUtils.readInput(fpath, "E:\\out3");
+        pcapUtils.readInput(fpath, "C:\\Users\\zsc\\Desktop\\out3");
         long b = System.currentTimeMillis();
         System.out.println("时间：" + (b - a) / 1000);
         //pcapUtils.generateRoute("C:\\data\\out\\routesrc","C:\\data\\out");
@@ -427,7 +431,7 @@ public class PcapUtils {
         status = Status.GENROUTE;
         System.out.println(status);
         System.out.println("genSum " + genRouteSum);
-        ExecutorService exec = Executors.newFixedThreadPool(4);
+        ExecutorService exec = Executors.newFixedThreadPool(1);
         ArrayList<Future<Boolean>> results = new ArrayList<Future<Boolean>>();
         for (int i = 0; i < fileList.size(); i++) {
 //			System.out.println(fileList.get(i).getAbsolutePath());
@@ -448,7 +452,7 @@ public class PcapUtils {
         }
     }
 
-    private void parsePcap(String fpath, String outpath) throws FileNotFoundException {
+    private void parsePcap(String fpath, String outpath) throws IOException, FileNotFoundException {
         getFileList(fpath, "pcap");
         parseSum = fileList.size();
         status = Status.PARSE;
@@ -457,14 +461,17 @@ public class PcapUtils {
         ExecutorService exec = Executors.newFixedThreadPool(16);
         ArrayList<Future<Boolean>> results = new ArrayList<Future<Boolean>>();
         for (int i = 0; i < fileList.size(); i++) {
-            InputStream is = new FileInputStream(fileList.get(i));
+            FileChannel fc = new FileInputStream(fileList.get(i)).getChannel();
+            long length = 0;
+            MappedByteBuffer is =  fc.map(FileChannel.MapMode.READ_ONLY, 0, fc.size());
+//            InputStream is = new FileInputStream(fileList.get(i));
             String file = fileList.get(i).getName();
             int index = file.lastIndexOf(".");
             file = file.substring(0, index);
 
 //			System.out.println(file);
 
-            Parser parser = new Parser(this, is, file, trafficRecords, bws, outpath);
+            Parser parser = new Parser(fc, this, is, file, trafficRecords, bws, outpath);
             results.add(exec.submit(parser));
             System.out.println("循环parsepcap");
         }
@@ -562,7 +569,7 @@ public class PcapUtils {
         }
     }
 
-    public void readInput(String fpath, String outpath) throws FileNotFoundException {
+    public void readInput(String fpath, String outpath) throws IOException, FileNotFoundException {
 
         File folder = new File(outpath + "\\routesrc");
         boolean suc = (folder.exists() && folder.isDirectory()) ? true : folder.mkdirs();
