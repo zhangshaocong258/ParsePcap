@@ -54,6 +54,8 @@ class Parser implements Callable {
 
                 pcapUtils.setParsedNum(pcapUtils.getParsedNum() + 1);
                 System.out.println("getParsedNum()" + pcapUtils.getParsedNum());
+                is = null;
+                System.gc();
                 fc.close();
             } else {
 //                long partition = (long) Math.ceil(length / (1024 * 1024 * 1024));
@@ -64,7 +66,6 @@ class Parser implements Callable {
                 int linkType = PcapParser.hUnpack(header);
                 setPosition(header.position());//读取文件头后的position24
                 for (int i = 1; i <= partition; i++) {
-                    System.out.println("进入for");
                     pLength = length * i / partition - position;//position初值为0，不用+1，否则fc.map溢出
                     System.out.println("pLength: " + pLength);
                     System.out.println("参数position：" + position);
