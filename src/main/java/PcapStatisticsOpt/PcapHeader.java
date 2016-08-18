@@ -1,3 +1,5 @@
+package PcapStatisticsOpt;
+
 public class PcapHeader {
     private int magic;//文件识别头,为0xA1B2C3D4
     private short major_version;//主要版本

@@ -1,3 +1,5 @@
+package PcapStatisticsOpt;
+
 public class RecordKey implements Comparable {
     private String srcIp;
     private String dstIp;

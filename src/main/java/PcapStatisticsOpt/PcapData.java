@@ -1,3 +1,5 @@
+package PcapStatisticsOpt;
+
 public class PcapData implements Comparable {
     private long time_s;//时间戳（秒）
     private long time_ms;//时间戳（微妙）
