@@ -1,62 +1,70 @@
-package PcapDistributed;
+package Distributed;
 
 import PcapStatisticsOpt.PcapUtils;
+
+import java.awt.*;
 import java.io.*;
 import java.net.Socket;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
- * Created by zsc on 2016/7/5.
+ * Created by zsc on 2016/5/20.
  */
-public class PcapClient {
-
+public class Client {
     private ClientInit clientInit = new ClientInit();
+    private DataPanel dataPanel;
+    private String IP;
+    private int port;
+
+    //pcapClient
     private ArrayList<File> fileList = new ArrayList<File>();
     private String DELIMITER = "\r\n";
-    private String filePath = "E:\\pcap";
-    private String outPath = "E:\\57data";
+    private String filePath;
+    private String outPath;
     private String folderPath;//文件绝对路径：E:\57data\routsrc
     private String folderName;//文件名称：routesrc或node
     private int index;//从outPath处将父目录与文件名称切分
     private String type = "pcap";
     private int BUF_LEN = 5 * 1024 * 1024;
 
-    //    private DataPanel dataPanel;
-    private String IP;
-    private int port;
 
-    public static void main(String[] args) {
-        PcapClient pcapClient = new PcapClient();
-
-        pcapClient.startConnect();
-        new Thread(pcapClient.new ExecuteTask()).start();
-    }
-
-//    public PcapClient(DataPanel dataPanel, String IP, int port) {
-//        this.dataPanel = dataPanel;
-//        this.IP = IP;
-//        this.port = port;
+//    public static void main(String[] args) {
+//        Client client = new Client();
+//        client.startConnect();
+//        new Thread(client.new ExecuteTaskClient()).start();
 //    }
 
-    private boolean isConnected() {
+    public Client(DataPanel dataPanel, String IP, int port, String filePath, String outPath) {
+        this.dataPanel = dataPanel;
+        this.IP = IP;
+        this.port = port;
+        this.filePath = filePath;
+        this.outPath = outPath;
+    }
+
+    //连接服务端
+    public void startConnect() {
+        clientInit.connectWithServer(dataPanel, IP, port);
+        if (isConnected()) {
+            System.out.println("连接");
+            dataPanel.sendLog("客户端已连接");//控制台输出
+        }
+    }
+
+    //判断是否连接上，决定输出
+    public boolean isConnected(){
         return clientInit.isConnected();
     }
 
-    private void startConnect() {
-        clientInit.connectWithServer();
-        if (isConnected()) {
-            System.out.println("连接");
-        }
+    //退出
+    public void close() {
+        clientInit.close();
+        clientInit.setFlag(false);
     }
 
-    private void sendReady() {
-        try {
-            clientInit.sendMsg("Ready");
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
 
     private void getTaskList2(String tasks, String part2) {
         File file = new File(outPath + part2 + File.separator + tasks.split(DELIMITER)[0]);
@@ -66,7 +74,7 @@ public class PcapClient {
     private void getTaskList(String tasks) {
         String[] str = tasks.split(DELIMITER);
         for (int i = 0; i < str.length; i++) {
-            File file = new File(filePath + "\\" + str[i]);
+            File file = new File(filePath + "\\" + str[i]);//得到E:/pcap/0-0.pcap等等
             fileList.add(file);
         }
     }
@@ -76,22 +84,15 @@ public class PcapClient {
     }
 
     private String getPart1(String tasks) {
-        return tasks.substring(0, tasks.indexOf("-"));
+        return tasks.substring(tasks.lastIndexOf("\\") - 1, tasks.lastIndexOf("\\"));//得到sub文件夹，例如0,1...
     }
 
-//    private void getTaskList(String tasks, String filePath, String type) {
-//        File ff = new File(filePath);
-//        if (ff.isFile() && filePath.endsWith(type) && tasks.contains(ff.getName())) {
-//            fileList.add(ff);
-//        } else if (ff.isDirectory()) {
-//            File[] files = ff.listFiles();
-//            for (File f : files) {
-//                getTaskList(tasks, f.getAbsolutePath(), type);
-//            }
-//        }
-//    }
+    class Sum{
+        long sumLen = 0L;
+    }
 
-    class ExecuteTask implements Runnable {
+    //pcapClient
+    class ParsePcapClient implements Runnable {
         private String tasks;
         private String tasks2;
         private PcapUtils pcapUtils;
@@ -105,64 +106,106 @@ public class PcapClient {
             try {
                 while (true) {
                     System.out.println("开始");
-                    sendReady();//先发送Ready
-                    System.out.println("ready已发送");
-                    taskFlag = clientInit.receiveData();//判断执行哪个任务
+                    clientInit.sendPcapMsg("Ready");//先发送Ready
+                    System.out.println("Pcap_ready已发送");
+                    taskFlag = clientInit.receiveStr();//判断执行哪个任务
                     if (taskFlag.equals("First")) {
-                        tasks = clientInit.receiveData();//收到要完成的任务string
+                        tasks = clientInit.receiveStr();//收到要完成的任务string
+                        System.out.println("接收的任务" + tasks);
                         if (tasks.equals("Empty")) {
                             System.out.println("empty");
                             continue;//所有结果已发送，返回
                         }
-                        fileList.clear();//清空list
+                        fileList.clear();//清空文件list
                         getTaskList(tasks);//生成filelist,子文件夹及子文件目录与服务端一致
-                        part1 = getPart1(tasks);
+                        part1 = getPart1(tasks);//发送来的一个任务代表一个路由节点的所有pcap文件，part1代表路由节点的名称
+                        System.out.println("part1: " + part1);
                         pcapUtils = new PcapUtils();
+                        dataPanel.sendLog("正在执行First2Step");
                         pcapUtils.First2Step(fileList, outPath + part1);//执行前两步每次在不同的文件夹下保存结果
+                        dataPanel.sendLog("First2Step执行完毕，等待将生成的文件传回服务端");
                         System.out.println("执行完毕");
-                        clientInit.sendMsg(tasks);
-                        String str = clientInit.receiveData();
+                        clientInit.sendPcapMsg(tasks);//将tasks返回，服务端判断是否存在此文件
+                        String str = clientInit.receiveStr();
+                        dataPanel.changeLog("文件已传输：" + "0%");
                         if (str.equals("Absent")) {
                             System.out.println("absent...");
                             //返回结果
                             sendAllResult(outPath + part1);
+                            dataPanel.sendLog("");//传输结束后换行
+                            dataPanel.sendLog("生成的文件已返回服务端");
                         } else {
+                            dataPanel.sendLog("文件已传输：100%");
+                            dataPanel.sendLog("生成的文件已返回服务端");
                             continue;
                         }
                     } else if (taskFlag.equals("Last")) {
-                        tasks2 = clientInit.receiveData();
+                        tasks2 = clientInit.receiveStr();
                         System.out.println("task2: " + tasks2);
                         if (tasks2.equals("Empty")) {
                             System.out.println("empty");
                             continue;//所有结果已发送，返回
                         }
-                        part2 = getPart2(tasks2);
-                        receiveResult(outPath + part2);
+                        part2 = getPart2(tasks2);//得到10.0.0.1_10.0.0.2
+                        System.out.println("part2: " + part2);
+                        //删除已存在的所有文件
+                        File ff = new File(outPath + part2);
+                        if (ff.exists() && ff.isDirectory()) {
+                            System.out.println("删除文件last");
+                            deleteFile(outPath + part2);
+                        }
+                        receiveResult(outPath + part2);//得到E:/57data/10.0.0.1_10.0.0.2
                         System.out.println("结束接收");
                         fileList.clear();
                         getTaskList2(tasks2, part2);
                         pcapUtils = new PcapUtils();
+                        dataPanel.sendLog("正在执行Last2Step");
                         pcapUtils.Last2Step(fileList, outPath + part2);
+                        dataPanel.sendLog("Last2Step执行完毕，等待将生成的文件传回服务端");
                         System.out.println("执行完毕");
-                        clientInit.sendMsg(tasks2);
-                        String str = clientInit.receiveData();
+                        clientInit.sendPcapMsg(tasks2);
+                        String str = clientInit.receiveStr();
+                        dataPanel.changeLog("文件已传输：" + "0%");
                         if (str.equals("Absent")) {
                             System.out.println("absent...");
                             //返回结果
                             sendAllResult(outPath + part2);
+                            dataPanel.sendLog("");//传输结束后换行
+                            dataPanel.sendLog("生成的文件已返回服务端");
                         } else {
+                            dataPanel.sendLog("文件已传输：100%");
+                            dataPanel.sendLog("生成的文件已返回服务端");
                             continue;
                         }
 
                     }
                 }
             } catch (IOException e) {
-                System.out.println("客户端关闭");
+                System.out.println("pcap客户端关闭");
                 e.printStackTrace();
             } catch (ClassNotFoundException e) {
                 e.printStackTrace();
             } finally {
-                clientInit.close();
+                clientInit.closePcap();
+            }
+        }
+
+        //递归删除文件夹下所有文件
+        public void deleteFile(String fileName) {
+            File file = new File(fileName);
+            if (file.exists()) {
+                if (file.isFile()){
+                    file.delete();
+                } else if (file.isDirectory()) {
+                    File[] files = file.listFiles();
+                    for (int i = 0; i < files.length; i++) {
+                        //删除子文件
+                        deleteFile(files[i].getAbsolutePath());
+                    }
+                    file.delete();
+                }
+            } else {
+                System.out.println("文件不存在");
             }
         }
 
@@ -218,18 +261,19 @@ public class PcapClient {
 
 
         private void sendAllResult(String outPath) throws IOException {
+            Sum sum = new Sum();
             File file = new File(outPath);
             if (file.isFile()) {
                 return;
             } else if (file.isDirectory()) {
                 File[] files = file.listFiles();
-                getFolderTotalLen(outPath);
+                getFolderTotalLen(outPath);//得到发送文件总长度
                 clientInit.sendLong(totalLen);
                 for (File f : files) {
-                    sendResult(f.getAbsolutePath());
+                    sendResult(f.getAbsolutePath(), sum);
                 }
             }
-            clientInit.sendMsg("endTransmit");
+            clientInit.sendPcapMsg("endTransmit");
         }
 
         private void preprocess(File folder) {
@@ -238,29 +282,29 @@ public class PcapClient {
             index = folderPath.length() - folderName.length();
         }
 
-        private void sendResult(String folderPath) throws IOException {
+        private void sendResult(String folderPath, Sum sum) throws IOException {
             File folder = new File(folderPath);
-            //暂时写死routesrc
+            //暂时写死routesrc，Last过程中不发送foutesrc
             if (!(folder.getName().equals("routesrc") && taskFlag.equals("Last"))) {
                 preprocess(folder);//得到绝对路径、文件名、index
 //            System.out.println("fPath: " + folderPath + "fName: " + folderName + "index: " + index);
                 if (folder.isFile()) {
 //                totalLen = folder.length();
 //                clientInit.sendLong(totalLen);//sendAllResult中发送，保证发送一次
-                    sendFile(folder);
+                    sendFile(folder, sum);
                 } else {
 //                getFolderTotalLen(outPath);//得到totalLen
 //                clientInit.sendLong(totalLen);//sendAllResult中发送，保证发送一次
-                    sendFolder(folder);
+                    sendFolder(folder, sum);
                 }
             }
         }
 
-        private void sendFolder(File folder) {
+        private void sendFolder(File folder, Sum sum) {
             String selectFolderPath = folder.getAbsolutePath().substring(index);//选择的文件夹名字：routesrc或node
             try {
-                clientInit.sendMsg("sendFolder");
-                clientInit.sendMsg(selectFolderPath);
+                clientInit.sendPcapMsg("sendFolder");
+                clientInit.sendPcapMsg(selectFolderPath);
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -276,27 +320,30 @@ public class PcapClient {
             }
             //转换为foreach
             for (File file : listFile) {
-                sendFile(file);
+                sendFile(file, sum);
             }
             for (File file : listFolder) {
-                sendFolder(file);
+                sendFolder(file, sum);
             }
         }
 
-        private void sendFile(File file) {
+        private void sendFile(File file, Sum sum) {
             byte[] sendBuffer = new byte[BUF_LEN];
             int length;
             try {
-                clientInit.sendMsg("sendFile");
-                clientInit.sendMsg(file.getName());
+                clientInit.sendPcapMsg("sendFile");
+                clientInit.sendPcapMsg(file.getName());
                 System.out.println("fileName: " + file.getName());
 
                 DataInputStream dis = new DataInputStream(new BufferedInputStream(new FileInputStream(file)));
                 length = dis.read(sendBuffer, 0, sendBuffer.length);
                 while (length > 0) {
-                    clientInit.sendInt(length);
+                    clientInit.sendInt(length);//发送length是为了最后length为-1，作为结束的判断，因此每次都要发送length，否则发送方断开，接收方报错
+                    sum.sumLen += length;
                     clientInit.sendByte(sendBuffer, 0, length);
                     length = dis.read(sendBuffer, 0, sendBuffer.length);
+                    dataPanel.changeLog("文件已传输：" + ((sum.sumLen * 100) / totalLen) + "%");
+                    System.out.println("文件已传输：" + ((sum.sumLen * 100) / totalLen) + "%");
                 }
                 clientInit.sendInt(length);
                 dis.close();
@@ -316,47 +363,78 @@ public class PcapClient {
             for (File file : files) {
                 if (file.isFile()) {
                     this.totalLen += file.length();
-                } else if (file.isDirectory()) {
+                } else if (file.isDirectory() &&
+                        !(file.getName().equals("routesrc") && taskFlag.equals("Last"))) {//第二次不发送routesrc，因此略过
                     getFileLen(file);
                 }
             }
         }
     }
-
 }
 
+//初始化连接
 class ClientInit {
     private ClientConnectServer clientConnectServerMsg = new ClientConnectServer();
-    //    private ClientConnectServerObject clientConnectServerObject = new ClientConnectServerObject();
+    private ClientConnectServerObject clientConnectServerObject = new ClientConnectServerObject();
+    private ClientConnectServer pcapClientConnectServerMsg = new ClientConnectServer();
     private static boolean flag;
     private static boolean isConnected;
 
-    public void close() {
+    public void close(){
         clientConnectServerMsg.close();
-//        clientConnectServerObject.close();
+        clientConnectServerObject.close();
+        pcapClientConnectServerMsg.close();
     }
 
-    public void connectWithServer() {
-        boolean flag = true;
-        Socket socket1 = null;
-//        Socket socket2 = null;
+    public void closeTask(){
+        clientConnectServerMsg.close();
+        clientConnectServerObject.close();
+    }
 
-        //先启动客户端，不断尝试连接服务端
+    public void closePcap(){
+        pcapClientConnectServerMsg.close();
+    }
+
+    public void connectWithServer(DataPanel dataPanel, String IP, int port) {
+
+        flag = true;
+        isConnected = false;
+        Socket socket1 = null;
+        Socket socket2 = null;
+        Socket socket3 = null;
+        final DataPanel dataPanel1 = dataPanel;
+
+        //先启动客户端，不断尝试连接服务端，间隔5s
         while (flag) {
             try {
-                socket1 = new Socket("127.0.0.1", 7777);
-//                socket2 = new Socket("127.0.0.1", 7777);
-                if (socket1.getPort() == 7777) {
+                socket1 = new Socket(IP, port);
+                socket2 = new Socket(IP, port);
+                socket3 = new Socket(IP, port);
+                if (socket1.getPort() == port && String.valueOf(socket1.getInetAddress()).equals("/" + IP)
+                        && socket2.getPort() == port && String.valueOf(socket2.getInetAddress()).equals("/" + IP)
+                        && socket3.getPort() == port && String.valueOf(socket3.getInetAddress()).equals("/" + IP)) {
+                    System.out.println("客户端启动...");
+                    clientConnectServerMsg.connectServer(socket1);
+                    clientConnectServerObject.connectServer2(socket2);
+                    pcapClientConnectServerMsg.connectServer(socket3);
                     flag = false;
+                    isConnected = true;
                 }
             } catch (IOException e) {
                 System.out.println("服务端未启动，10S后重新尝试连接");
+                EventQueue.invokeLater(new Runnable() {
+                    @Override
+                    public void run() {
+                        dataPanel1.sendLog("服务端未启动，10S后重新尝试连接");
+                    }
+                });
             } finally {
                 try {
                     if (flag) {
                         socket1 = null;
-//                        socket2 = null;
-                        Thread.sleep(10000);
+                        socket2 = null;
+                        socket3 = null;
+                        Thread.sleep(5000);
                     } else {
                         break;
                     }
@@ -365,56 +443,62 @@ class ClientInit {
                 }
             }
         }
-        clientConnectServerMsg.connectServer(socket1);
-//        clientConnectServerObject.connectServer2(socket2);
     }
+
+
+    public void setFlag(boolean flag) {
+        this.flag = flag;
+    }
+
 
     public boolean isConnected() {
         return isConnected;
     }
 
+
+
     //发送文件
     public void sendInt(int len) throws IOException {
-        clientConnectServerMsg.getDosWithServer().writeInt(len);
+        pcapClientConnectServerMsg.getDosWithServer().writeInt(len);
     }
 
     //发送文件长度
     public void sendLong(long len) throws IOException {
-        clientConnectServerMsg.getDosWithServer().writeLong(len);
-        clientConnectServerMsg.getDosWithServer().flush();
+        pcapClientConnectServerMsg.getDosWithServer().writeLong(len);
+        pcapClientConnectServerMsg.getDosWithServer().flush();
     }
 
     public void sendByte(byte[] bytes, int off, int len) throws IOException {
-        clientConnectServerMsg.getDosWithServer().write(bytes, off, len);
-        clientConnectServerMsg.getDosWithServer().flush();
+        pcapClientConnectServerMsg.getDosWithServer().write(bytes, off, len);
+        pcapClientConnectServerMsg.getDosWithServer().flush();
     }
 
     //发送Ready信息
-    public void sendMsg(String str) throws IOException {
-        clientConnectServerMsg.getDosWithServer().writeUTF(str);
-        clientConnectServerMsg.getDosWithServer().flush();
+    public void sendPcapMsg(String str) throws IOException {
+        pcapClientConnectServerMsg.getDosWithServer().writeUTF(str);
+        pcapClientConnectServerMsg.getDosWithServer().flush();
     }
 
     public int receiveInt() throws IOException {
-        return clientConnectServerMsg.getDisWithServer().readInt();
+        return pcapClientConnectServerMsg.getDisWithServer().readInt();
     }
 
     public long receiveLong() throws IOException {
-        return clientConnectServerMsg.getDisWithServer().readLong();
+        return pcapClientConnectServerMsg.getDisWithServer().readLong();
     }
 
     public String receiveMsg() throws IOException {
-        return clientConnectServerMsg.getDisWithServer().readUTF();
+        return pcapClientConnectServerMsg.getDisWithServer().readUTF();
     }
 
     public void receiveFullByte(byte[] bytes, int off, int len) throws IOException {
-        clientConnectServerMsg.getDisWithServer().readFully(bytes, off, len);
+        pcapClientConnectServerMsg.getDisWithServer().readFully(bytes, off, len);
     }
 
 
     //接收执行指令
-    public String receiveData() throws IOException, ClassNotFoundException {
-        return clientConnectServerMsg.getDisWithServer().readUTF();
+    public String receiveStr() throws IOException, ClassNotFoundException {
+        return pcapClientConnectServerMsg.getDisWithServer().readUTF();
     }
 }
 

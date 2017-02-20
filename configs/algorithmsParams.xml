@@ -1,0 +1,44 @@
+﻿<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- 算法参数 -->
+<algorithmsParams>
+    <!-- pcap解析参数 -->
+    <pcapParseParams>
+        <pcapPath>D:\ppp</pcapPath>
+        <outputPath>D:\outzsc</outputPath>
+        <parseAll>true</parseAll>
+    </pcapParseParams>
+
+    <!-- 分布式服务端参数 -->
+    <serverParams>
+        <port>7777</port>
+    </serverParams>
+
+    <!-- 分布式pcap解析参数 -->
+    <pcapParseDisParams>
+        <pcapPath>D:\ppp</pcapPath>
+        <outputPath>D:\outzsc</outputPath>
+    </pcapParseDisParams>
+
+    <!-- 客户端参数 -->
+    <clientParams>
+        <ip>127.0.0.1</ip>
+        <port>7777</port>
+        <pcapPath>E:\ppp</pcapPath>
+        <outputPath>E:\57data</outputPath>
+    </clientParams>
+    <!-- 端口 -->
+    <portParams>
+        <port>9</port>
+        <port>10</port>
+        <port>11</port>
+        <port>402</port>
+        <port>403</port>
+        <port>404</port>
+        <port>405</port>
+        <port>406</port>
+        <port>407</port>
+        <port>408</port>
+        <port>409</port>
+        <port>410</port>
+    </portParams>
+</algorithmsParams>
